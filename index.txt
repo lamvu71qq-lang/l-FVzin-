@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AccMaster Pro - Firebase Sync</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React Libraries (CDN Cloudflare) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Segoe UI', 'Roboto', 'sans-serif'] },
+                    animation: {
+                        'slide-in': 'slideIn 0.4s ease-out forwards',
+                        'scale-in': 'scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                    },
+                    keyframes: {
+                        slideIn: { from: { opacity: 0, transform: 'translateY(20px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+                        scaleIn: { from: { transform: 'scale(0.9)', opacity: 0 }, to: { transform: 'scale(1)', opacity: 1 } }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .dark ::-webkit-scrollbar { width: 8px; }
+        .dark ::-webkit-scrollbar-track { background: #0f172a; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
+
+    <div id="root">
+        <div class="min-h-screen flex flex-col items-center justify-center space-y-4">
+            <div class="loader"></div>
+            <p class="text-slate-500 font-medium">Đang kết nối Firebase...</p>
+        </div>
+    </div>
+
+    <!-- FIREBASE SETUP MODULE -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js";
+        import { 
+            getFirestore, collection, addDoc, updateDoc, deleteDoc, 
+            doc, onSnapshot, query, orderBy, setDoc, getDocs, writeBatch
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // CONFIG TỪ BẠN CUNG CẤP
+        const firebaseConfig = {
+            apiKey: "AIzaSyCQFwB4erEE2_Kt5BqQ8NGVVKKNbdnvIzo",
+            authDomain: "quan-li-acc.firebaseapp.com",
+            projectId: "quan-li-acc",
+            storageBucket: "quan-li-acc.firebasestorage.app",
+            messagingSenderId: "638625565768",
+            appId: "1:638625565768:web:483632f81b1cf07e1fdc7d",
+            measurementId: "G-1HZD58196W"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const db = getFirestore(app);
+
+        // Expose Firebase Functions to Window for React
+        window.db = db;
+        window.fs = { 
+            collection, addDoc, updateDoc, deleteDoc, 
+            doc, onSnapshot, query, orderBy, setDoc, getDocs, writeBatch 
+        };
+        
+        // Signal Ready
+        window.dispatchEvent(new Event('firebase-ready'));
+    </script>
+
+    <!-- REACT APP -->
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- ICONS ---
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const icons = {
+                Users: <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>,
+                RefreshCw: <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>,
+                CheckCircle: <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>,
+                DollarSign: <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>,
+                Trash2: <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>,
+                TrendingUp: <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>,
+                Clock: <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>,
+                PlayCircle: <circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>,
+                ShoppingBag: <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>,
+                ArrowRight: <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>,
+                Copy: <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>,
+                Zap: <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>,
+                Award: <circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>,
+                Layers: <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>,
+                Search: <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>,
+                Moon: <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>,
+                Sun: <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>,
+                Edit2: <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>,
+                Check: <polyline points="20 6 9 17 4 12"/>,
+                X: <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>,
+                History: <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>,
+                Shuffle: <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>,
+                AlertTriangle: <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>,
+                Plus: <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>,
+                Minus: <line x1="5" y1="12" x2="19" y2="12"/>,
+                Timer: <line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/>,
+                Lock: <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>,
+                LogOut: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>,
+                Shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>,
+                UserCog: <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/><circle cx="12" cy="12" r="3"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M4.93 19.07l1.41-1.41"/><path d="M17.66 6.34l1.41-1.41"/>,
+                Briefcase: <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>,
+                Percent: <line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>,
+                User: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            };
+            return <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{icons[name] || <circle cx="12" cy="12" r="10"/>}</svg>;
+        };
+
+        const DEFAULT_USERS = [
+            { id: 'admin', username: 'Admin', password: '1111', role: 'admin', name: 'Administrator' },
+            { id: 'minh', username: 'minh', password: '1234', role: 'viewer', name: 'Minh Sale' },
+            { id: 'huy', username: 'huy', password: '1234', role: 'viewer', name: 'Huy Sale' }
+        ];
+
+        // --- DATA SERVICE (FIREBASE) ---
+        const DataService = {
+            colUsers: () => window.fs.collection(window.db, 'users'),
+            colAccounts: () => window.fs.collection(window.db, 'accounts'),
+            colHistory: () => window.fs.collection(window.db, 'history'),
+            
+            async seedUsersIfEmpty() {
+                const snap = await window.fs.getDocs(this.colUsers());
+                if (snap.empty) {
+                    const batch = window.fs.writeBatch(window.db);
+                    DEFAULT_USERS.forEach(u => {
+                        const ref = window.fs.doc(this.colUsers(), u.id);
+                        batch.set(ref, u);
+                    });
+                    await batch.commit();
+                    console.log("Seeded Default Users");
+                }
+            }
+        };
+
+        // --- APP ---
+        const App = () => {
+            const [isReady, setIsReady] = useState(false);
+            const [isDark, setIsDark] = useState(true);
+            const [appName] = useState("AccMaster Pro");
+            
+            // Auth State
+            const [currentUser, setCurrentUser] = useState(null); 
+            const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+            const [loginError, setLoginError] = useState('');
+
+            // Live Data
+            const [users, setUsers] = useState([]);
+            const [accounts, setAccounts] = useState([]);
+            const [history, setHistory] = useState([]);
+
+            // Local UI State
+            const [generatedCreds, setGeneratedCreds] = useState({ email: '', password: '' });
+            const [formData, setFormData] = useState({ username: '', password: '', price: '', note: '' });
+            const [filter, setFilter] = useState('all'); 
+            const [toast, setToast] = useState(null);
+            const [now, setNow] = useState(Date.now());
+            const [sellQuantity, setSellQuantity] = useState(1);
+            const [selectedSellerId, setSelectedSellerId] = useState('admin');
+
+            // Modals
+            const [showHistory, setShowHistory] = useState(false);
+            const [showUserManage, setShowUserManage] = useState(false);
+            const [showProfile, setShowProfile] = useState(false);
+            const [confirmModal, setConfirmModal] = useState(null); 
+            const [soldModal, setSoldModal] = useState(null);
+            const [editingUser, setEditingUser] = useState(null);
+            const [profileForm, setProfileForm] = useState({ username: '', password: '', name: '' });
+
+            // --- INITIALIZATION ---
+            useEffect(() => {
+                const init = async () => {
+                    if (window.db) {
+                        await DataService.seedUsersIfEmpty();
+                        
+                        // Subscribe to collections
+                        const unsubUsers = window.fs.onSnapshot(DataService.colUsers(), (snap) => {
+                            setUsers(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                        });
+                        const unsubAccs = window.fs.onSnapshot(window.fs.query(DataService.colAccounts(), window.fs.orderBy('createdAt', 'desc')), (snap) => {
+                            setAccounts(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                        });
+                        const unsubHist = window.fs.onSnapshot(window.fs.query(DataService.colHistory(), window.fs.orderBy('soldAt', 'desc')), (snap) => {
+                            setHistory(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                        });
+
+                        setIsReady(true);
+                        return () => { unsubUsers(); unsubAccs(); unsubHist(); };
+                    }
+                };
+                
+                if (window.db) init();
+                else window.addEventListener('firebase-ready', init);
+            }, []);
+
+            // --- TIMER LOGIC ---
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setNow(Date.now());
+                    // Logic check completed days locally for UI updates,
+                    // Note: In real app, cloud functions should handle status updates to be 100% sync.
+                    // For now, client updates local status display.
+                }, 60000); 
+                return () => clearInterval(interval);
+            }, []);
+
+            // --- AUTH LOGIC ---
+            const handleLogin = (e) => {
+                e.preventDefault();
+                const user = users.find(u => 
+                    u.username.toLowerCase() === loginForm.username.toLowerCase() && 
+                    u.password === loginForm.password
+                );
+
+                if (user) {
+                    setCurrentUser(user);
+                    setLoginError('');
+                    showToast(`Xin chào ${user.name}!`, 'success');
+                    setSelectedSellerId(user.role === 'admin' ? 'admin' : user.id);
+                } else {
+                    setLoginError('Sai tên đăng nhập hoặc mật khẩu!');
+                }
+            };
+
+            const handleLogout = () => {
+                setCurrentUser(null);
+                setLoginForm({ username: '', password: '' });
+                setShowHistory(false);
+                setShowUserManage(false);
+                setShowProfile(false);
+            };
+
+            const updateUser = async (id, field, value) => {
+                try {
+                    await window.fs.updateDoc(window.fs.doc(DataService.colUsers(), id), { [field]: value });
+                    if (currentUser && currentUser.id === id) {
+                        setCurrentUser(prev => ({...prev, [field]: value}));
+                    }
+                    showToast('Cập nhật thành công', 'success');
+                } catch(e) { console.error(e); showToast('Lỗi cập nhật', 'error'); }
+            };
+            
+            const handleSaveProfile = async () => {
+                if (!profileForm.username || !profileForm.password) return showToast('Không được để trống!', 'error');
+                await updateUser(currentUser.id, 'username', profileForm.username);
+                await updateUser(currentUser.id, 'password', profileForm.password);
+                await updateUser(currentUser.id, 'name', profileForm.name);
+                setShowProfile(false);
+            };
+
+            // --- UTILS ---
+            const showToast = (message, type = 'success') => {
+                setToast({ message, type });
+                setTimeout(() => setToast(null), 3000);
+            };
+
+            const copyToClipboard = (text, label) => {
+                navigator.clipboard.writeText(text).then(() => showToast(`Đã copy ${label}`, 'success'));
+            };
+
+            const getCommissionRate = (count) => count >= 22 ? 0.05 : 0.02;
+
+            const getViewerStats = (userId) => {
+                const userSales = history.filter(h => h.soldBy === userId);
+                const count = userSales.length;
+                const totalRevenue = userSales.reduce((sum, item) => sum + item.price, 0);
+                const totalCommission = userSales.reduce((sum, item) => sum + (item.commission || 0), 0);
+                const currentRate = getCommissionRate(count);
+                
+                let nextTierText = "Max Level";
+                let progress = 100;
+                
+                if (count < 22) {
+                    nextTierText = `Cần ${22 - count} acc để lên 5%`;
+                    progress = (count / 22) * 100;
+                }
+                return { count, totalRevenue, totalCommission, currentRate, nextTierText, progress };
+            };
+
+            // --- CORE ACTIONS (FIRESTORE) ---
+            const handleAddAccount = async (e) => {
+                e.preventDefault();
+                if (!formData.username || !formData.password) return;
+
+                const newAccount = {
+                    username: formData.username,
+                    password: formData.password,
+                    price: Number(formData.price) || 0,
+                    note: formData.note,
+                    daysFarmed: 0,
+                    status: 'pending',
+                    mode: 'manual',
+                    farmingStartedAt: null,
+                    soldBy: null,
+                    createdAt: Date.now()
+                };
+
+                await window.fs.addDoc(DataService.colAccounts(), newAccount);
+                setFormData({ username: '', password: '', price: '', note: '' });
+                showToast('Đã thêm acc vào Database!');
+            };
+
+            const requestDelete = (id) => {
+                setConfirmModal({
+                    type: 'delete',
+                    data: id,
+                    title: 'Xác nhận xóa',
+                    message: 'Bạn có chắc muốn xóa vĩnh viễn acc này trên Cloud?',
+                    onConfirm: async () => {
+                        await window.fs.deleteDoc(window.fs.doc(DataService.colAccounts(), id));
+                        setConfirmModal(null);
+                        showToast('Đã xóa account', 'error');
+                    }
+                });
+            };
+
+            const requestSellSingle = (accId) => {
+                const defaultSeller = isAdmin ? 'admin' : currentUser.id;
+                setSelectedSellerId(defaultSeller);
+                setConfirmModal({
+                    type: 'sell_single',
+                    data: accId,
+                    title: 'Xác nhận bán',
+                    message: 'Chọn người bán để tính doanh thu:',
+                    isSellConfirm: true,
+                    onConfirm: () => performSellSingle(accId)
+                });
+            };
+
+            const performSellSingle = async (accId) => {
+                const accToSell = accounts.find(a => a.id === accId);
+                if (!accToSell) return;
+
+                const finalSellerId = isAdmin ? selectedSellerId : currentUser.id;
+                const sellerHistoryCount = history.filter(h => h.soldBy === finalSellerId).length;
+                const sellerUser = users.find(u => u.id === finalSellerId);
+                const isViewer = sellerUser?.role === 'viewer';
+                
+                let commission = 0;
+                if (isViewer) {
+                    commission = accToSell.price * getCommissionRate(sellerHistoryCount);
+                }
+
+                let finalDays = accToSell.daysFarmed;
+                if (accToSell.mode === 'auto' && accToSell.farmingStartedAt) {
+                    finalDays = Math.floor((Date.now() - accToSell.farmingStartedAt) / (1000 * 60 * 60 * 24));
+                }
+
+                // Batch Write for Atomicity
+                const batch = window.fs.writeBatch(window.db);
+                
+                // 1. Update Account
+                const accRef = window.fs.doc(DataService.colAccounts(), accId);
+                batch.update(accRef, { status: 'sold', soldBy: finalSellerId });
+
+                // 2. Add History
+                const histRef = window.fs.doc(DataService.colHistory()); // Auto ID
+                batch.set(histRef, {
+                    ...accToSell,
+                    daysFarmed: Math.min(23, finalDays),
+                    soldAt: Date.now(),
+                    soldMethod: 'manual',
+                    soldBy: finalSellerId,
+                    commission: commission,
+                    originalAccId: accId
+                });
+
+                await batch.commit();
+                
+                setConfirmModal(null);
+                setSoldModal({ 
+                    type: 'single', username: accToSell.username, password: accToSell.password, 
+                    price: accToSell.price, seller: sellerUser?.name 
+                });
+                showToast(`Đã bán acc!`, 'success');
+            };
+
+            const requestSellRandom = () => {
+                const getDays = (acc) => acc.mode === 'auto' && acc.farmingStartedAt 
+                    ? Math.floor((Date.now() - acc.farmingStartedAt) / (1000 * 60 * 60 * 24)) 
+                    : acc.daysFarmed;
+                const readyAccs = accounts.filter(a => (a.status === 'completed' || (a.status === 'farming' && getDays(a) >= 23)) && a.status !== 'sold');
+                
+                if (readyAccs.length === 0) return showToast('Không có acc đủ ngày!', 'error');
+
+                const maxSell = Math.min(sellQuantity, readyAccs.length);
+                setSelectedSellerId('admin');
+                setConfirmModal({
+                    type: 'sell_random',
+                    data: readyAccs,
+                    title: `Bán Random ${maxSell} Acc`,
+                    message: `Chọn người bán cho lô ${maxSell} account này:`,
+                    isSellConfirm: true,
+                    onConfirm: () => performSellRandom(readyAccs, maxSell)
+                });
+            };
+
+            const performSellRandom = async (readyAccs, quantity) => {
+                const finalSellerId = isAdmin ? selectedSellerId : currentUser.id;
+                const shuffled = [...readyAccs].sort(() => 0.5 - Math.random());
+                const selectedAccs = shuffled.slice(0, quantity);
+                
+                const sellerHistoryCount = history.filter(h => h.soldBy === finalSellerId).length;
+                const isViewer = users.find(u => u.id === finalSellerId)?.role === 'viewer';
+                
+                const batch = window.fs.writeBatch(window.db);
+                let totalRevenue = 0;
+
+                selectedAccs.forEach((acc, idx) => {
+                    const currentCount = sellerHistoryCount + idx; 
+                    const comm = isViewer ? acc.price * getCommissionRate(currentCount) : 0;
+                    
+                    let finalDays = acc.daysFarmed;
+                    if (acc.mode === 'auto' && acc.farmingStartedAt) {
+                        finalDays = Math.floor((Date.now() - acc.farmingStartedAt) / (1000 * 60 * 60 * 24));
+                    }
+
+                    // Update Acc
+                    const accRef = window.fs.doc(DataService.colAccounts(), acc.id);
+                    batch.update(accRef, { status: 'sold', soldBy: finalSellerId });
+
+                    // Add History
+                    const histRef = window.fs.doc(DataService.colHistory());
+                    batch.set(histRef, {
+                        ...acc,
+                        daysFarmed: Math.min(23, finalDays),
+                        soldAt: Date.now(),
+                        soldMethod: 'random_batch',
+                        soldBy: finalSellerId,
+                        commission: comm,
+                        originalAccId: acc.id
+                    });
+                    totalRevenue += acc.price;
+                });
+
+                await batch.commit();
+                setConfirmModal(null);
+                setSoldModal({ type: 'batch', count: quantity, revenue: totalRevenue, seller: users.find(u=>u.id === finalSellerId)?.name });
+                showToast(`Đã bán ${quantity} acc!`, 'success');
+            };
+
+            // --- HELPERS (Account Update) ---
+            const toggleAccountMode = async (id) => {
+                const acc = accounts.find(a => a.id === id);
+                if(!acc) return;
+                
+                const currentMode = acc.mode || 'manual';
+                const newMode = currentMode === 'manual' ? 'auto' : 'manual';
+                let updates = { mode: newMode };
+                
+                if (newMode === 'auto') {
+                    const msFromDays = (acc.daysFarmed || 0) * 24 * 60 * 60 * 1000;
+                    updates.farmingStartedAt = Date.now() - msFromDays;
+                    if (acc.status === 'pending') {
+                        updates.status = 'farming';
+                        updates.farmingStartedAt = Date.now();
+                    }
+                } else {
+                    if (acc.farmingStartedAt) {
+                        const daysElapsed = (Date.now() - acc.farmingStartedAt) / (1000 * 60 * 60 * 24);
+                        updates.daysFarmed = Math.min(23, Math.floor(daysElapsed));
+                    }
+                }
+                await window.fs.updateDoc(window.fs.doc(DataService.colAccounts(), id), updates);
+            };
+
+            const updateAccountDaysManual = async (id, newDays) => {
+                const acc = accounts.find(a => a.id === id);
+                const validDays = Math.max(0, Math.min(23, newDays));
+                let newStatus = acc.status;
+                if (validDays >= 23) newStatus = 'completed';
+                else if (validDays > 0 && acc.status === 'pending') newStatus = 'farming';
+                else if (validDays > 0 && acc.status === 'completed') newStatus = 'farming';
+                else if (validDays === 0) newStatus = 'pending';
+                
+                await window.fs.updateDoc(window.fs.doc(DataService.colAccounts(), id), { daysFarmed: validDays, status: newStatus });
+            };
+
+            // ... (Rest of logic: generateHotmail, fillToForm similar to V3 but just state manipulation)
+            const generateHotmail = () => {
+                const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+                let user = ''; for(let i=0;i<8;i++) user+=chars.charAt(Math.floor(Math.random()*chars.length));
+                let pass = ''; const pc='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#';
+                for(let i=0;i<10;i++) pass+=pc.charAt(Math.floor(Math.random()*pc.length));
+                setGeneratedCreds({ email: `${user}@hotmail.com`, password: pass });
+            };
+            const fillToForm = () => setFormData(prev => ({ ...prev, username: generatedCreds.email, password: generatedCreds.password }));
+
+            // --- VIEW ---
+            const theme = {
+                bg: isDark ? 'bg-slate-950' : 'bg-slate-50',
+                text: isDark ? 'text-slate-100' : 'text-slate-800',
+                textMuted: isDark ? 'text-slate-400' : 'text-slate-500',
+                card: isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100',
+                cardHover: isDark ? 'hover:border-slate-700' : 'hover:border-slate-200',
+                input: isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-800',
+                modalOverlay: 'bg-black/60 backdrop-blur-sm',
+                modalBg: isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800',
+            };
+            const isAdmin = currentUser && currentUser.role === 'admin';
+            const myStats = currentUser && !isAdmin ? getViewerStats(currentUser.id) : null;
+            const getAccStatus = (acc) => {
+                if (acc.status === 'sold') return 'sold';
+                if (acc.status === 'completed') return 'completed';
+                if (acc.mode === 'auto' && acc.farmingStartedAt) {
+                    if ((Date.now() - acc.farmingStartedAt) / 86400000 >= 23) return 'completed';
+                }
+                return acc.status;
+            };
+            const filteredAccounts = accounts.filter(acc => filter === 'all' ? true : getAccStatus(acc) === filter);
+            const stats = {
+                total: accounts.length, unsold: accounts.filter(a => a.status !== 'sold').length,
+                sold: accounts.filter(a => a.status === 'sold').length,
+                completed: accounts.filter(a => getAccStatus(a) === 'completed').length,
+                revenue: history.reduce((sum, h) => sum + h.price, 0)
+            };
+
+            if (!isReady) return null; // Let loader handle it
+
+            if (!currentUser) {
+                return (
+                    <div className={`min-h-screen flex items-center justify-center p-4 font-sans ${theme.bg} ${theme.text}`}>
+                        <div className={`w-full max-w-md p-8 rounded-2xl shadow-2xl border animate-scale-in ${theme.card}`}>
+                            <div className="flex flex-col items-center mb-6">
+                                <div className="bg-indigo-600 p-3 rounded-xl mb-4 shadow-lg shadow-indigo-500/30"><Icon name="Lock" size={32} className="text-white" /></div>
+                                <h1 className="text-2xl font-bold">AccMaster Cloud</h1>
+                                <p className={theme.textMuted}>Đồng bộ dữ liệu Real-time</p>
+                            </div>
+                            <form onSubmit={handleLogin} className="space-y-4">
+                                <div><label className="text-xs font-bold uppercase opacity-70">Username</label><input type="text" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none border-2 focus:border-indigo-500 transition-colors ${theme.input}`} autoFocus /></div>
+                                <div><label className="text-xs font-bold uppercase opacity-70">Password</label><input type="password" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none border-2 focus:border-indigo-500 transition-colors ${theme.input}`} /></div>
+                                {loginError && (<div className="p-3 rounded-lg bg-rose-500/10 text-rose-500 text-sm font-bold flex items-center gap-2"><Icon name="AlertTriangle" size={16} /> {loginError}</div>)}
+                                <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg active:scale-95">Đăng Nhập</button>
+                            </form>
+                            <div className="mt-6 text-center text-xs opacity-50"><p>Admin: Admin / 1111</p><p>Viewer: minh / 1234</p></div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className={`min-h-screen font-sans transition-colors duration-300 pb-20 ${theme.bg} ${theme.text} ${isDark ? 'dark' : ''}`}>
+                    {/* MODALS */}
+                    {confirmModal && (
+                        <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
+                            <div className={`w-full max-w-sm rounded-2xl p-6 shadow-2xl border animate-scale-in ${theme.modalBg}`}>
+                                <h3 className="text-xl font-bold mb-2 text-center">{confirmModal.title}</h3>
+                                <p className={`text-center mb-4 ${theme.textMuted}`}>{confirmModal.message}</p>
+                                {confirmModal.isSellConfirm && isAdmin && (
+                                    <div className="mb-4">
+                                        <label className="block text-xs font-bold uppercase mb-1.5 opacity-70">Người bán:</label>
+                                        <select value={selectedSellerId} onChange={(e) => setSelectedSellerId(e.target.value)} className={`w-full p-2 rounded-lg border outline-none ${theme.input}`}>
+                                            {users.map(u => (<option key={u.id} value={u.id}>{u.name} {u.role==='admin'?'(Admin)':''}</option>))}
+                                        </select>
+                                    </div>
+                                )}
+                                <div className="flex gap-3 w-full mt-2">
+                                    <button onClick={() => setConfirmModal(null)} className={`flex-1 py-2.5 rounded-xl font-bold transition-colors ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>Hủy</button>
+                                    <button onClick={confirmModal.onConfirm} className={`flex-1 py-2.5 rounded-xl font-bold text-white transition-transform active:scale-95 ${confirmModal.type === 'delete' ? 'bg-rose-600' : 'bg-purple-600'}`}>Xác Nhận</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showProfile && (
+                        <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
+                            <div className={`w-full max-w-sm rounded-2xl p-6 shadow-2xl border animate-scale-in ${theme.modalBg}`}>
+                                <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold">Hồ Sơ Của Tôi</h3><button onClick={()=>setShowProfile(false)}><Icon name="X"/></button></div>
+                                <div className="space-y-3">
+                                    <div><label className="text-xs font-bold uppercase opacity-70">Tên hiển thị</label><input value={profileForm.name || currentUser.name} onChange={(e) => setProfileForm({...profileForm, name: e.target.value})} className={`w-full p-2.5 rounded-lg border ${theme.input}`} /></div>
+                                    <div><label className="text-xs font-bold uppercase opacity-70">Username</label><input value={profileForm.username || currentUser.username} onChange={(e) => setProfileForm({...profileForm, username: e.target.value})} className={`w-full p-2.5 rounded-lg border ${theme.input}`} /></div>
+                                    <div><label className="text-xs font-bold uppercase opacity-70">Password</label><input value={profileForm.password || currentUser.password} onChange={(e) => setProfileForm({...profileForm, password: e.target.value})} className={`w-full p-2.5 rounded-lg border ${theme.input}`} /></div>
+                                    <button onClick={handleSaveProfile} className="w-full mt-4 bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg">Lưu Thay Đổi</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {soldModal && (
+                         <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
+                            <div className={`w-full max-w-md rounded-2xl p-6 shadow-2xl border animate-scale-in relative overflow-hidden ${theme.modalBg}`}>
+                                <div className={`absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-purple-500 to-indigo-500`}></div>
+                                <button onClick={() => setSoldModal(null)} className="absolute top-4 right-4 p-1 rounded-full hover:bg-black/10 transition"><Icon name="X" size={20}/></button>
+                                <div className="text-center mb-6 pt-2">
+                                    <div className="inline-flex p-3 rounded-full bg-green-100 text-green-600 mb-3"><Icon name="CheckCircle" size={32} /></div>
+                                    <h3 className="text-2xl font-bold">{soldModal.type === 'batch' ? `Bán ${soldModal.count} Acc Thành Công!` : 'Bán Acc Thành Công!'}</h3>
+                                </div>
+                                {soldModal.type === 'batch' ? (
+                                    <div className={`p-4 rounded-xl border mb-6 text-center ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                                        <p className="text-lg font-bold">Seller: {soldModal.seller}</p>
+                                        <p className="text-2xl font-bold text-emerald-500">+{soldModal.revenue.toLocaleString()} đ</p>
+                                    </div>
+                                ) : (
+                                    <div className={`p-4 rounded-xl border mb-6 text-left ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                                        <div className="mb-2"><span className="text-xs uppercase font-bold opacity-60">User/Pass</span><button onClick={()=>copyToClipboard(`${soldModal.username}|${soldModal.password}`,"User|Pass")} className="w-full mt-1 p-2 bg-indigo-500/10 text-indigo-500 rounded font-mono font-bold">{soldModal.username}|{soldModal.password}</button></div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {showHistory && isAdmin && (
+                        <div className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4 animate-fade-in ${theme.modalOverlay}`}>
+                            <div className={`w-full sm:max-w-2xl h-[80vh] sm:h-[600px] flex flex-col rounded-t-2xl sm:rounded-2xl shadow-2xl border animate-slide-in ${theme.modalBg}`}>
+                                <div className={`p-4 border-b flex justify-between items-center ${isDark ? 'border-slate-700' : 'border-slate-200'}`}><h3 className="text-xl font-bold flex items-center gap-2"><Icon name="History"/> Lịch Sử Giao Dịch</h3><button onClick={()=>setShowHistory(false)}><Icon name="X"/></button></div>
+                                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                    {history.map((h, idx) => (
+                                        <div key={idx} className={`p-3 rounded-xl border flex justify-between items-center ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1"><span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase bg-slate-700 text-slate-400">{h.soldMethod}</span><span className="font-mono text-sm font-bold">{h.username}</span></div>
+                                                <div className="text-[10px] opacity-60 font-bold">Seller: {users.find(u=>u.id===h.soldBy)?.name} | Comm: {h.commission?.toLocaleString()}đ</div>
+                                            </div>
+                                            <div className="text-right"><div className="font-bold text-emerald-500">+{h.price.toLocaleString()} đ</div><div className="text-[10px] opacity-60">{new Date(h.soldAt).toLocaleString()}</div></div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className={`p-4 border-t flex justify-between items-center text-sm font-bold ${isDark ? 'border-slate-700 bg-slate-800/50' : 'bg-slate-50'}`}><span>Tổng doanh thu:</span><span className="text-xl text-emerald-500">{stats.revenue.toLocaleString()} đ</span></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showUserManage && isAdmin && (
+                        <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
+                             <div className={`w-full max-w-2xl rounded-2xl p-6 shadow-2xl border animate-scale-in max-h-[90vh] overflow-y-auto ${theme.modalBg}`}>
+                                <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold">Quản Lý Viewers</h3><button onClick={()=>setShowUserManage(false)}><Icon name="X"/></button></div>
+                                <div className="space-y-4">
+                                    {users.filter(u => u.role === 'viewer').map(u => {
+                                        const uStats = getViewerStats(u.id);
+                                        return (
+                                            <div key={u.id} className={`p-4 rounded-xl border ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-slate-50'}`}>
+                                                <div className="flex justify-between items-start mb-2"><div><div className="font-bold text-lg">{u.name}</div><div className="text-xs opacity-60">ID: {u.id}</div></div><button onClick={()=>setEditingUser(editingUser===u.id?null:u.id)} className="text-indigo-500"><Icon name="Edit2"/></button></div>
+                                                <div className="grid grid-cols-3 gap-2 mt-3 mb-3 pb-3 border-b border-dashed border-slate-600">
+                                                    <div className="text-center"><div className="text-[10px] uppercase opacity-60 font-bold">Đã bán</div><div className="font-bold text-blue-500">{uStats.count}</div></div>
+                                                    <div className="text-center"><div className="text-[10px] uppercase opacity-60 font-bold">Doanh Thu</div><div className="font-bold text-emerald-500">{uStats.totalRevenue.toLocaleString()}đ</div></div>
+                                                    <div className="text-center"><div className="text-[10px] uppercase opacity-60 font-bold">Hoa Hồng</div><div className="font-bold text-purple-500">{uStats.totalCommission.toLocaleString()}đ</div></div>
+                                                </div>
+                                                {editingUser === u.id && (
+                                                    <div className="space-y-2 mt-3">
+                                                        <div><label className="text-[10px] font-bold">Login</label><input value={u.username} onChange={e=>updateUser(u.id,'username',e.target.value)} className={`w-full px-2 py-1 rounded text-sm ${theme.input}`}/></div>
+                                                        <div><label className="text-[10px] font-bold">Pass</label><input value={u.password} onChange={e=>updateUser(u.id,'password',e.target.value)} className={`w-full px-2 py-1 rounded text-sm ${theme.input}`}/></div>
+                                                        <div><label className="text-[10px] font-bold">Name</label><input value={u.name} onChange={e=>updateUser(u.id,'name',e.target.value)} className={`w-full px-2 py-1 rounded text-sm ${theme.input}`}/></div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                             </div>
+                        </div>
+                    )}
+                    
+                    {toast && (
+                        <div className={`fixed top-24 right-5 z-[100] px-6 py-3 rounded-lg shadow-2xl animate-slide-in flex items-center gap-3 font-medium text-white ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+                            <Icon name={toast.type==='success'?'CheckCircle':'AlertTriangle'}/> {toast.message}
+                        </div>
+                    )}
+
+                    {/* MAIN UI */}
+                    <header className={`backdrop-blur-md sticky top-0 z-50 border-b shadow-sm ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
+                        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-indigo-600 p-2 rounded-lg text-white"><Icon name="Layers" size={24} /></div>
+                                <div><h1 className="text-xl font-bold leading-none">{appName}</h1><div className="flex items-center gap-2 text-xs"><span className={`px-1 rounded ${isAdmin?'bg-rose-500 text-white':'bg-blue-500 text-white'}`}>{isAdmin?'ADMIN':'VIEWER'}</span><span className="opacity-60">{currentUser.name}</span></div></div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button onClick={()=>openProfile(true)} className={`px-3 py-2 rounded-lg font-bold text-xs flex items-center gap-2 ${isDark?'bg-slate-800':'bg-slate-100'}`}><Icon name="User" size={16}/> Hồ Sơ</button>
+                                {isAdmin && (<><button onClick={()=>setShowUserManage(true)} className={`p-2 rounded-full ${isDark?'bg-slate-800':'bg-slate-100'}`}><Icon name="UserCog"/></button><button onClick={()=>setShowHistory(true)} className={`p-2 rounded-full ${isDark?'bg-slate-800':'bg-slate-100'}`}><Icon name="History"/></button></>)}
+                                <button onClick={()=>setIsDark(!isDark)} className={`p-2 rounded-full ${isDark?'bg-slate-800':'bg-slate-100'}`}><Icon name={isDark?"Sun":"Moon"}/></button>
+                                <button onClick={handleLogout} className={`p-2 rounded-full ${isDark?'bg-slate-800':'bg-slate-100'}`}><Icon name="LogOut"/></button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
+                        {/* VIEWER DASHBOARD */}
+                        {!isAdmin && myStats && (
+                            <div className={`p-6 rounded-2xl border shadow-lg mb-8 ${theme.card}`}>
+                                <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Icon name="Briefcase" className="text-indigo-500"/> Hiệu suất của bạn</h2>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className={`p-4 rounded-xl border ${isDark?'border-slate-700 bg-slate-800':'bg-slate-50'}`}><div className="text-sm opacity-60 font-bold">Hoa hồng</div><div className="text-3xl font-bold text-purple-500">{(myStats.currentRate*100).toFixed(0)}%</div><div className="w-full bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden"><div className="bg-purple-500 h-full" style={{width:`${myStats.progress}%`}}></div></div><div className="text-[10px] text-right mt-1 opacity-60">{myStats.nextTierText}</div></div>
+                                    <div className={`p-4 rounded-xl border ${isDark?'border-slate-700 bg-slate-800':'bg-slate-50'}`}><div className="text-sm opacity-60 font-bold">Đã bán</div><div className="text-3xl font-bold text-blue-500">{myStats.count} Acc</div></div>
+                                    <div className={`p-4 rounded-xl border ${isDark?'border-slate-700 bg-slate-800':'bg-slate-50'}`}><div className="text-sm opacity-60 font-bold">Thu Nhập</div><div className="text-3xl font-bold text-emerald-500">{myStats.totalCommission.toLocaleString()} VNĐ</div></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ADMIN STATS */}
+                        {isAdmin && (
+                            <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                                <div className={`p-4 rounded-2xl border ${theme.card}`}><div className="text-xs font-bold uppercase opacity-60">Tổng Acc</div><div className="text-2xl font-bold">{stats.total}</div></div>
+                                <div className={`p-4 rounded-2xl border ${theme.card}`}><div className="text-xs font-bold uppercase opacity-60">Chưa bán</div><div className="text-2xl font-bold text-indigo-500">{stats.unsold}</div></div>
+                                <div className={`p-4 rounded-2xl border ${theme.card}`}><div className="text-xs font-bold uppercase opacity-60">Đã bán</div><div className="text-2xl font-bold text-emerald-500">{stats.sold}</div></div>
+                                <div className={`p-4 rounded-2xl border ${theme.card}`}><div className="text-xs font-bold uppercase opacity-60">Hoàn thành</div><div className="text-2xl font-bold text-blue-500">{stats.completed}</div></div>
+                                <div className={`p-4 rounded-2xl border col-span-2 ${theme.card}`}><div className="text-xs font-bold uppercase opacity-60">Doanh thu</div><div className="text-2xl font-bold text-emerald-500">{stats.revenue.toLocaleString()} VNĐ</div></div>
+                            </section>
+                        )}
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                             {/* SIDEBAR */}
+                            <div className="lg:col-span-4 space-y-6">
+                                {isAdmin ? (
+                                    <>
+                                        <div className="rounded-2xl p-6 shadow-sm border relative overflow-hidden bg-gradient-to-br from-indigo-900 to-purple-900 text-white border-none">
+                                            <div className="flex justify-between mb-4"><h2 className="font-bold text-lg flex gap-2"><Icon name="Shuffle"/> Bán Random</h2><span className="text-xs bg-purple-500 px-2 py-0.5 rounded-full font-bold">{stats.completed} Ready</span></div>
+                                            <div className="flex items-center gap-2 mb-4"><button onClick={()=>setSellQuantity(Math.max(1,sellQuantity-1))} className="p-2 bg-white/10 rounded"><Icon name="Minus"/></button><input type="number" value={sellQuantity} onChange={e=>setSellQuantity(Math.max(1,parseInt(e.target.value)||0))} className="w-full text-center bg-transparent font-bold text-xl"/><button onClick={()=>setSellQuantity(sellQuantity+1)} className="p-2 bg-white/10 rounded"><Icon name="Plus"/></button></div>
+                                            <button onClick={requestSellRandom} className="w-full py-3 bg-white text-indigo-900 font-bold rounded-xl shadow-lg active:scale-95">Bán Ngay</button>
+                                        </div>
+                                        <div className={`rounded-2xl p-6 border ${theme.card}`}>
+                                            <div className="flex items-center gap-2 mb-4 font-bold text-lg"><Icon name="RefreshCw" className="text-blue-500"/> Auto Hotmail</div>
+                                            <div className={`p-3 rounded border border-dashed mb-3 font-mono text-sm ${isDark?'bg-slate-800':'bg-slate-50'}`}><div>User: {generatedCreds.email||'---'}</div><div>Pass: {generatedCreds.password||'---'}</div></div>
+                                            <div className="flex gap-2"><button onClick={generateHotmail} className="flex-1 py-2 bg-slate-700 text-white rounded font-bold">Random</button><button onClick={fillToForm} className="flex-1 py-2 border rounded font-bold text-indigo-500">Điền Form</button></div>
+                                        </div>
+                                        <div className={`rounded-2xl p-6 border ${theme.card}`}>
+                                            <div className="flex items-center gap-2 mb-4 font-bold text-lg"><Icon name="Plus" className="text-emerald-500"/> Thêm Acc</div>
+                                            <form onSubmit={handleAddAccount} className="space-y-3">
+                                                <div><label className="text-xs font-bold opacity-60">User/Pass</label><input value={formData.username} onChange={e=>setFormData({...formData,username:e.target.value})} placeholder="User" className={`w-full p-2 mb-2 rounded border ${theme.input}`}/><input value={formData.password} onChange={e=>setFormData({...formData,password:e.target.value})} placeholder="Pass" className={`w-full p-2 rounded border ${theme.input}`}/></div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <input type="number" value={formData.price} onChange={e=>setFormData({...formData,price:e.target.value})} placeholder="Giá" className={`w-full p-2 rounded border ${theme.input}`}/>
+                                                    <input value={formData.note} onChange={e=>setFormData({...formData,note:e.target.value})} placeholder="Ghi chú" className={`w-full p-2 rounded border ${theme.input}`}/>
+                                                </div>
+                                                <button className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg active:scale-95">Thêm</button>
+                                            </form>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className={`h-64 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center opacity-50 ${isDark?'border-slate-800':'border-slate-200'}`}><Icon name="Shield" size={48}/><p className="font-bold mt-2">Chế độ Viewer</p></div>
+                                )}
+                            </div>
+
+                            {/* MAIN LIST */}
+                            <div className={`lg:col-span-8 flex flex-col h-[800px] rounded-2xl border shadow-lg overflow-hidden ${theme.card}`}>
+                                {isAdmin ? (
+                                    <>
+                                        <div className={`p-4 border-b flex justify-between items-center ${isDark?'border-slate-800':'border-slate-100'}`}>
+                                            <h2 className="font-bold text-lg">Danh Sách ({filteredAccounts.length})</h2>
+                                            <div className="flex gap-1 overflow-x-auto">{['all','pending','farming','completed','sold'].map(f=><button key={f} onClick={()=>setFilter(f)} className={`px-3 py-1 rounded text-xs font-bold capitalize ${filter===f?'bg-indigo-600 text-white':'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>{f}</button>)}</div>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                            {filteredAccounts.map((acc) => {
+                                                const status = getAccStatus(acc);
+                                                const isSold = status === 'sold';
+                                                let days = acc.daysFarmed;
+                                                if(acc.mode==='auto' && acc.farmingStartedAt) days = Math.floor((now - acc.farmingStartedAt)/86400000);
+                                                if(days>23) days=23;
+                                                const progress = (days/23)*100;
+                                                
+                                                return (
+                                                    <div key={acc.id} className={`p-4 rounded-xl border flex flex-col md:flex-row gap-4 hover:shadow-md transition-all ${isSold?'opacity-60 grayscale':''} ${isDark?'border-slate-800 bg-slate-800/50':'border-slate-100 bg-white'}`}>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2 mb-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${status==='sold'?'border-slate-500 text-slate-500':status==='completed'?'border-blue-500 text-blue-500':'border-amber-500 text-amber-500'}`}>{status}</span><span className="text-xs opacity-50">#{acc.id.slice(-4)}</span></div>
+                                                            <div className="font-mono font-bold truncate cursor-pointer hover:text-indigo-500" onClick={()=>copyToClipboard(acc.username,'User')}>{acc.username}</div>
+                                                            <div className="font-mono text-xs opacity-60 truncate cursor-pointer hover:text-indigo-500" onClick={()=>copyToClipboard(acc.password,'Pass')}>{acc.password}</div>
+                                                        </div>
+                                                        <div className="flex flex-col items-end gap-2">
+                                                            <div className="font-bold text-emerald-500 text-lg">{acc.price.toLocaleString()}đ</div>
+                                                            {!isSold && (
+                                                                <div className="w-32">
+                                                                    <div className="flex justify-between text-[10px] font-bold opacity-60 mb-1">
+                                                                        {acc.mode==='manual'?<div className="flex gap-1"><button onClick={()=>updateAccountDaysManual(acc.id,days-1)}>-</button>{days}<button onClick={()=>updateAccountDaysManual(acc.id,days+1)}>+</button></div>:<span className="flex items-center gap-1 text-blue-500"><Icon name="Zap" size={10}/> Auto</span>}
+                                                                        <span>{Math.round(progress)}%</span>
+                                                                    </div>
+                                                                    <div className="h-1.5 bg-slate-200 rounded-full dark:bg-slate-700 overflow-hidden"><div className={`h-full ${status==='completed'?'bg-blue-500':'bg-amber-500'}`} style={{width:`${progress}%`}}></div></div>
+                                                                </div>
+                                                            )}
+                                                            <div className="flex gap-2 mt-2">
+                                                                {!isSold && (<button onClick={()=>toggleAccountMode(acc.id)} className="p-1.5 rounded border text-[10px] font-bold opacity-60 hover:opacity-100">{acc.mode==='auto'?'MAN':'AUTO'}</button>)}
+                                                                {!isSold && (<button onClick={()=>requestSellSingle(acc.id)} className="p-1.5 rounded bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition"><Icon name="DollarSign" size={16}/></button>)}
+                                                                <button onClick={()=>requestDelete(acc.id)} className="p-1.5 rounded bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition"><Icon name="Trash2" size={16}/></button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="h-full flex flex-col items-center justify-center opacity-50"><Icon name="Lock" size={64}/><p>Danh sách ẩn với Viewer</p></div>
+                                )}
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
