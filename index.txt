@@ -5,15 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AccMaster Pro - Firebase Sync</title>
     
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- React Libraries (CDN Cloudflare) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 
-    <!-- Tailwind Config -->
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -49,7 +46,6 @@
         </div>
     </div>
 
-    <!-- FIREBASE SETUP MODULE -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js";
@@ -85,7 +81,6 @@
         window.dispatchEvent(new Event('firebase-ready'));
     </script>
 
-    <!-- REACT APP -->
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
@@ -219,9 +214,6 @@
             useEffect(() => {
                 const interval = setInterval(() => {
                     setNow(Date.now());
-                    // Logic check completed days locally for UI updates,
-                    // Note: In real app, cloud functions should handle status updates to be 100% sync.
-                    // For now, client updates local status display.
                 }, 60000); 
                 return () => clearInterval(interval);
             }, []);
@@ -379,7 +371,7 @@
                 const histRef = window.fs.doc(DataService.colHistory()); // Auto ID
                 batch.set(histRef, {
                     ...accToSell,
-                    daysFarmed: Math.min(23, finalDays),
+                    daysFarmed: Math.min(50, finalDays), // EDITED: 23 -> 50
                     soldAt: Date.now(),
                     soldMethod: 'manual',
                     soldBy: finalSellerId,
@@ -401,9 +393,11 @@
                 const getDays = (acc) => acc.mode === 'auto' && acc.farmingStartedAt 
                     ? Math.floor((Date.now() - acc.farmingStartedAt) / (1000 * 60 * 60 * 24)) 
                     : acc.daysFarmed;
-                const readyAccs = accounts.filter(a => (a.status === 'completed' || (a.status === 'farming' && getDays(a) >= 23)) && a.status !== 'sold');
                 
-                if (readyAccs.length === 0) return showToast('Không có acc đủ ngày!', 'error');
+                // EDITED: 23 -> 50
+                const readyAccs = accounts.filter(a => (a.status === 'completed' || (a.status === 'farming' && getDays(a) >= 50)) && a.status !== 'sold');
+                
+                if (readyAccs.length === 0) return showToast('Không có acc đủ ngày (50 ngày)!', 'error');
 
                 const maxSell = Math.min(sellQuantity, readyAccs.length);
                 setSelectedSellerId('admin');
@@ -445,7 +439,7 @@
                     const histRef = window.fs.doc(DataService.colHistory());
                     batch.set(histRef, {
                         ...acc,
-                        daysFarmed: Math.min(50, finalDays),
+                        daysFarmed: Math.min(50, finalDays), // Ensure max 50
                         soldAt: Date.now(),
                         soldMethod: 'random_batch',
                         soldBy: finalSellerId,
@@ -480,7 +474,8 @@
                 } else {
                     if (acc.farmingStartedAt) {
                         const daysElapsed = (Date.now() - acc.farmingStartedAt) / (1000 * 60 * 60 * 24);
-                        updates.daysFarmed = Math.min(23, Math.floor(daysElapsed));
+                        // EDITED: 23 -> 50
+                        updates.daysFarmed = Math.min(50, Math.floor(daysElapsed));
                     }
                 }
                 await window.fs.updateDoc(window.fs.doc(DataService.colAccounts(), id), updates);
@@ -498,7 +493,6 @@
                 await window.fs.updateDoc(window.fs.doc(DataService.colAccounts(), id), { daysFarmed: validDays, status: newStatus });
             };
 
-            // ... (Rest of logic: generateHotmail, fillToForm similar to V3 but just state manipulation)
             const generateHotmail = () => {
                 const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
                 let user = ''; for(let i=0;i<8;i++) user+=chars.charAt(Math.floor(Math.random()*chars.length));
@@ -525,7 +519,8 @@
                 if (acc.status === 'sold') return 'sold';
                 if (acc.status === 'completed') return 'completed';
                 if (acc.mode === 'auto' && acc.farmingStartedAt) {
-                    if ((Date.now() - acc.farmingStartedAt) / 86400000 >= 23) return 'completed';
+                    // EDITED: 23 -> 50
+                    if ((Date.now() - acc.farmingStartedAt) / 86400000 >= 50) return 'completed';
                 }
                 return acc.status;
             };
@@ -567,239 +562,364 @@
                         <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
                             <div className={`w-full max-w-sm rounded-2xl p-6 shadow-2xl border animate-scale-in ${theme.modalBg}`}>
                                 <h3 className="text-xl font-bold mb-2 text-center">{confirmModal.title}</h3>
-                                <p className={`text-center mb-4 ${theme.textMuted}`}>{confirmModal.message}</p>
-                                {confirmModal.isSellConfirm && isAdmin && (
-                                    <div className="mb-4">
-                                        <label className="block text-xs font-bold uppercase mb-1.5 opacity-70">Người bán:</label>
-                                        <select value={selectedSellerId} onChange={(e) => setSelectedSellerId(e.target.value)} className={`w-full p-2 rounded-lg border outline-none ${theme.input}`}>
-                                            {users.map(u => (<option key={u.id} value={u.id}>{u.name} {u.role==='admin'?'(Admin)':''}</option>))}
-                                        </select>
+                                <p className={`mb-4 text-center ${theme.textMuted}`}>{confirmModal.message}</p>
+                                
+                                {/* Seller Selector for Sales */}
+                                {confirmModal.isSellConfirm && (
+                                    <div className="mb-6">
+                                        <label className="block text-xs font-bold uppercase mb-1 opacity-70">Người bán (để tính doanh thu)</label>
+                                        <div className={`flex items-center p-3 rounded-xl border-2 ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-slate-50'}`}>
+                                            <Icon name="User" size={18} className="mr-2 opacity-50"/>
+                                            <select 
+                                                value={selectedSellerId} 
+                                                onChange={(e) => setSelectedSellerId(e.target.value)}
+                                                className="bg-transparent w-full outline-none font-medium"
+                                                disabled={!isAdmin} // Only admin can change seller, viewers sell as themselves
+                                            >
+                                                {users.map(u => (
+                                                    <option key={u.id} value={u.id} className="text-black">{u.name} ({u.role})</option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
                                 )}
-                                <div className="flex gap-3 w-full mt-2">
-                                    <button onClick={() => setConfirmModal(null)} className={`flex-1 py-2.5 rounded-xl font-bold transition-colors ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>Hủy</button>
-                                    <button onClick={confirmModal.onConfirm} className={`flex-1 py-2.5 rounded-xl font-bold text-white transition-transform active:scale-95 ${confirmModal.type === 'delete' ? 'bg-rose-600' : 'bg-purple-600'}`}>Xác Nhận</button>
+
+                                <div className="flex gap-3">
+                                    <button 
+                                        onClick={() => setConfirmModal(null)}
+                                        className={`flex-1 py-3 rounded-xl font-bold transition-colors ${isDark ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-200 hover:bg-slate-300'}`}
+                                    >
+                                        Hủy
+                                    </button>
+                                    <button 
+                                        onClick={confirmModal.onConfirm}
+                                        className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg shadow-indigo-500/30 transition-transform active:scale-95 ${confirmModal.type === 'delete' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-indigo-600 hover:bg-indigo-500'}`}
+                                    >
+                                        Xác nhận
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {showProfile && (
-                        <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
-                            <div className={`w-full max-w-sm rounded-2xl p-6 shadow-2xl border animate-scale-in ${theme.modalBg}`}>
-                                <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold">Hồ Sơ Của Tôi</h3><button onClick={()=>setShowProfile(false)}><Icon name="X"/></button></div>
-                                <div className="space-y-3">
-                                    <div><label className="text-xs font-bold uppercase opacity-70">Tên hiển thị</label><input value={profileForm.name || currentUser.name} onChange={(e) => setProfileForm({...profileForm, name: e.target.value})} className={`w-full p-2.5 rounded-lg border ${theme.input}`} /></div>
-                                    <div><label className="text-xs font-bold uppercase opacity-70">Username</label><input value={profileForm.username || currentUser.username} onChange={(e) => setProfileForm({...profileForm, username: e.target.value})} className={`w-full p-2.5 rounded-lg border ${theme.input}`} /></div>
-                                    <div><label className="text-xs font-bold uppercase opacity-70">Password</label><input value={profileForm.password || currentUser.password} onChange={(e) => setProfileForm({...profileForm, password: e.target.value})} className={`w-full p-2.5 rounded-lg border ${theme.input}`} /></div>
-                                    <button onClick={handleSaveProfile} className="w-full mt-4 bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg">Lưu Thay Đổi</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    
+                    {/* SOLD SUCCESS MODAL */}
                     {soldModal && (
-                         <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
-                            <div className={`w-full max-w-md rounded-2xl p-6 shadow-2xl border animate-scale-in relative overflow-hidden ${theme.modalBg}`}>
-                                <div className={`absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-purple-500 to-indigo-500`}></div>
-                                <button onClick={() => setSoldModal(null)} className="absolute top-4 right-4 p-1 rounded-full hover:bg-black/10 transition"><Icon name="X" size={20}/></button>
-                                <div className="text-center mb-6 pt-2">
-                                    <div className="inline-flex p-3 rounded-full bg-green-100 text-green-600 mb-3"><Icon name="CheckCircle" size={32} /></div>
-                                    <h3 className="text-2xl font-bold">{soldModal.type === 'batch' ? `Bán ${soldModal.count} Acc Thành Công!` : 'Bán Acc Thành Công!'}</h3>
+                        <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
+                            <div className={`w-full max-w-sm rounded-2xl p-6 shadow-2xl border animate-scale-in text-center ${theme.modalBg}`}>
+                                <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-green-500/30">
+                                    <Icon name="Check" size={32} className="text-white" />
                                 </div>
-                                {soldModal.type === 'batch' ? (
-                                    <div className={`p-4 rounded-xl border mb-6 text-center ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                                        <p className="text-lg font-bold">Seller: {soldModal.seller}</p>
-                                        <p className="text-2xl font-bold text-emerald-500">+{soldModal.revenue.toLocaleString()} đ</p>
+                                <h3 className="text-2xl font-bold mb-2 text-green-500">Giao dịch thành công!</h3>
+                                
+                                {soldModal.type === 'single' ? (
+                                    <div className="space-y-3 mb-6 text-left p-4 rounded-xl bg-slate-500/5 border border-slate-500/10">
+                                        <p><span className="opacity-50 text-xs uppercase font-bold">Account:</span> <span className="font-mono font-bold">{soldModal.username}</span></p>
+                                        <p><span className="opacity-50 text-xs uppercase font-bold">Password:</span> <span className="font-mono font-bold">{soldModal.password}</span></p>
+                                        <p><span className="opacity-50 text-xs uppercase font-bold">Giá bán:</span> <span className="font-bold text-green-500">{soldModal.price.toLocaleString()} đ</span></p>
+                                        <p><span className="opacity-50 text-xs uppercase font-bold">Người bán:</span> <span>{soldModal.seller}</span></p>
+                                        <button onClick={() => copyToClipboard(`${soldModal.username}|${soldModal.password}`, 'Acc Info')} className="w-full mt-2 flex items-center justify-center gap-2 py-2 rounded-lg bg-indigo-500/10 text-indigo-500 font-bold hover:bg-indigo-500/20"><Icon name="Copy" size={16}/> Copy Info</button>
                                     </div>
                                 ) : (
-                                    <div className={`p-4 rounded-xl border mb-6 text-left ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                                        <div className="mb-2"><span className="text-xs uppercase font-bold opacity-60">User/Pass</span><button onClick={()=>copyToClipboard(`${soldModal.username}|${soldModal.password}`,"User|Pass")} className="w-full mt-1 p-2 bg-indigo-500/10 text-indigo-500 rounded font-mono font-bold">{soldModal.username}|{soldModal.password}</button></div>
+                                    <div className="space-y-2 mb-6">
+                                        <p className="text-lg">Đã bán <span className="font-bold">{soldModal.count}</span> account ngẫu nhiên.</p>
+                                        <p className="text-xl font-bold text-green-500">+{soldModal.revenue.toLocaleString()} đ</p>
+                                        <p className="text-sm opacity-70">Người thực hiện: {soldModal.seller}</p>
                                     </div>
                                 )}
+                                <button onClick={() => setSoldModal(null)} className="w-full bg-slate-500/20 hover:bg-slate-500/30 font-bold py-3 rounded-xl">Đóng</button>
                             </div>
                         </div>
                     )}
 
-                    {showHistory && isAdmin && (
-                        <div className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4 animate-fade-in ${theme.modalOverlay}`}>
-                            <div className={`w-full sm:max-w-2xl h-[80vh] sm:h-[600px] flex flex-col rounded-t-2xl sm:rounded-2xl shadow-2xl border animate-slide-in ${theme.modalBg}`}>
-                                <div className={`p-4 border-b flex justify-between items-center ${isDark ? 'border-slate-700' : 'border-slate-200'}`}><h3 className="text-xl font-bold flex items-center gap-2"><Icon name="History"/> Lịch Sử Giao Dịch</h3><button onClick={()=>setShowHistory(false)}><Icon name="X"/></button></div>
-                                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                                    {history.map((h, idx) => (
-                                        <div key={idx} className={`p-3 rounded-xl border flex justify-between items-center ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-1"><span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase bg-slate-700 text-slate-400">{h.soldMethod}</span><span className="font-mono text-sm font-bold">{h.username}</span></div>
-                                                <div className="text-[10px] opacity-60 font-bold">Seller: {users.find(u=>u.id===h.soldBy)?.name} | Comm: {h.commission?.toLocaleString()}đ</div>
-                                            </div>
-                                            <div className="text-right"><div className="font-bold text-emerald-500">+{h.price.toLocaleString()} đ</div><div className="text-[10px] opacity-60">{new Date(h.soldAt).toLocaleString()}</div></div>
-                                        </div>
-                                    ))}
+                    {/* HISTORY MODAL */}
+                    {showHistory && (
+                        <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
+                            <div className={`w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border animate-scale-in ${theme.modalBg}`}>
+                                <div className="p-6 border-b border-slate-500/10 flex justify-between items-center">
+                                    <h3 className="text-xl font-bold flex items-center gap-2"><Icon name="History" className="text-indigo-500"/> Lịch sử bán hàng</h3>
+                                    <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-slate-500/10 rounded-full"><Icon name="X"/></button>
                                 </div>
-                                <div className={`p-4 border-t flex justify-between items-center text-sm font-bold ${isDark ? 'border-slate-700 bg-slate-800/50' : 'bg-slate-50'}`}><span>Tổng doanh thu:</span><span className="text-xl text-emerald-500">{stats.revenue.toLocaleString()} đ</span></div>
+                                <div className="flex-1 overflow-auto p-6">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="text-xs uppercase opacity-50 border-b border-slate-500/20">
+                                                <th className="p-3">Thời gian</th>
+                                                <th className="p-3">Account</th>
+                                                <th className="p-3">Giá</th>
+                                                <th className="p-3">Seller</th>
+                                                <th className="p-3">Hoa hồng</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {history.map(h => {
+                                                const sellerName = users.find(u => u.id === h.soldBy)?.name || 'Unknown';
+                                                return (
+                                                    <tr key={h.id} className="border-b border-slate-500/5 hover:bg-slate-500/5 transition-colors">
+                                                        <td className="p-3 text-sm opacity-70">{new Date(h.soldAt).toLocaleString('vi-VN')}</td>
+                                                        <td className="p-3 font-mono text-sm">{h.username}</td>
+                                                        <td className="p-3 font-bold text-green-500">{h.price.toLocaleString()}</td>
+                                                        <td className="p-3 text-sm">{sellerName}</td>
+                                                        <td className="p-3 text-sm">{h.commission ? h.commission.toLocaleString() : '-'}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                            {history.length === 0 && <tr><td colSpan="5" className="p-8 text-center opacity-50">Chưa có lịch sử bán hàng.</td></tr>}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     )}
 
-                    {showUserManage && isAdmin && (
-                        <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
-                             <div className={`w-full max-w-2xl rounded-2xl p-6 shadow-2xl border animate-scale-in max-h-[90vh] overflow-y-auto ${theme.modalBg}`}>
-                                <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold">Quản Lý Viewers</h3><button onClick={()=>setShowUserManage(false)}><Icon name="X"/></button></div>
+                    {/* USER PROFILE MODAL */}
+                    {showProfile && (
+                        <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in ${theme.modalOverlay}`}>
+                            <div className={`w-full max-w-md rounded-2xl p-6 shadow-2xl border animate-scale-in ${theme.modalBg}`}>
+                                <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Icon name="UserCog" className="text-indigo-500"/> Hồ sơ cá nhân</h3>
                                 <div className="space-y-4">
-                                    {users.filter(u => u.role === 'viewer').map(u => {
-                                        const uStats = getViewerStats(u.id);
-                                        return (
-                                            <div key={u.id} className={`p-4 rounded-xl border ${isDark ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-slate-50'}`}>
-                                                <div className="flex justify-between items-start mb-2"><div><div className="font-bold text-lg">{u.name}</div><div className="text-xs opacity-60">ID: {u.id}</div></div><button onClick={()=>setEditingUser(editingUser===u.id?null:u.id)} className="text-indigo-500"><Icon name="Edit2"/></button></div>
-                                                <div className="grid grid-cols-3 gap-2 mt-3 mb-3 pb-3 border-b border-dashed border-slate-600">
-                                                    <div className="text-center"><div className="text-[10px] uppercase opacity-60 font-bold">Đã bán</div><div className="font-bold text-blue-500">{uStats.count}</div></div>
-                                                    <div className="text-center"><div className="text-[10px] uppercase opacity-60 font-bold">Doanh Thu</div><div className="font-bold text-emerald-500">{uStats.totalRevenue.toLocaleString()}đ</div></div>
-                                                    <div className="text-center"><div className="text-[10px] uppercase opacity-60 font-bold">Hoa Hồng</div><div className="font-bold text-purple-500">{uStats.totalCommission.toLocaleString()}đ</div></div>
-                                                </div>
-                                                {editingUser === u.id && (
-                                                    <div className="space-y-2 mt-3">
-                                                        <div><label className="text-[10px] font-bold">Login</label><input value={u.username} onChange={e=>updateUser(u.id,'username',e.target.value)} className={`w-full px-2 py-1 rounded text-sm ${theme.input}`}/></div>
-                                                        <div><label className="text-[10px] font-bold">Pass</label><input value={u.password} onChange={e=>updateUser(u.id,'password',e.target.value)} className={`w-full px-2 py-1 rounded text-sm ${theme.input}`}/></div>
-                                                        <div><label className="text-[10px] font-bold">Name</label><input value={u.name} onChange={e=>updateUser(u.id,'name',e.target.value)} className={`w-full px-2 py-1 rounded text-sm ${theme.input}`}/></div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
+                                    <div><label className="text-xs font-bold uppercase opacity-70">Tên hiển thị</label><input type="text" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} className={`w-full px-4 py-2 mt-1 rounded-lg border bg-transparent outline-none focus:border-indigo-500 ${isDark ? 'border-slate-700' : 'border-slate-300'}`} /></div>
+                                    <div><label className="text-xs font-bold uppercase opacity-70">Username</label><input type="text" value={profileForm.username} onChange={e => setProfileForm({...profileForm, username: e.target.value})} className={`w-full px-4 py-2 mt-1 rounded-lg border bg-transparent outline-none focus:border-indigo-500 ${isDark ? 'border-slate-700' : 'border-slate-300'}`} /></div>
+                                    <div><label className="text-xs font-bold uppercase opacity-70">Password</label><input type="text" value={profileForm.password} onChange={e => setProfileForm({...profileForm, password: e.target.value})} className={`w-full px-4 py-2 mt-1 rounded-lg border bg-transparent outline-none focus:border-indigo-500 ${isDark ? 'border-slate-700' : 'border-slate-300'}`} /></div>
+                                    <div className="flex gap-3 mt-4">
+                                        <button onClick={() => setShowProfile(false)} className="flex-1 py-2 rounded-lg bg-slate-500/20 hover:bg-slate-500/30 font-bold">Hủy</button>
+                                        <button onClick={handleSaveProfile} className="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Lưu thay đổi</button>
+                                    </div>
                                 </div>
-                             </div>
-                        </div>
-                    )}
-                    
-                    {toast && (
-                        <div className={`fixed top-24 right-5 z-[100] px-6 py-3 rounded-lg shadow-2xl animate-slide-in flex items-center gap-3 font-medium text-white ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
-                            <Icon name={toast.type==='success'?'CheckCircle':'AlertTriangle'}/> {toast.message}
+                            </div>
                         </div>
                     )}
 
-                    {/* MAIN UI */}
-                    <header className={`backdrop-blur-md sticky top-0 z-50 border-b shadow-sm ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
-                        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-indigo-600 p-2 rounded-lg text-white"><Icon name="Layers" size={24} /></div>
-                                <div><h1 className="text-xl font-bold leading-none">{appName}</h1><div className="flex items-center gap-2 text-xs"><span className={`px-1 rounded ${isAdmin?'bg-rose-500 text-white':'bg-blue-500 text-white'}`}>{isAdmin?'ADMIN':'VIEWER'}</span><span className="opacity-60">{currentUser.name}</span></div></div>
+                    {/* TOAST */}
+                    {toast && (
+                        <div className={`fixed top-4 right-4 z-[70] px-6 py-3 rounded-xl shadow-2xl animate-slide-in flex items-center gap-3 font-bold ${toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-rose-500 text-white'}`}>
+                            <Icon name={toast.type === 'success' ? 'CheckCircle' : 'AlertTriangle'} size={24} />
+                            {toast.message}
+                        </div>
+                    )}
+
+                    {/* HEADER */}
+                    <header className={`sticky top-0 z-40 px-6 py-4 shadow-sm backdrop-blur-md border-b flex items-center justify-between ${isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
+                        <div className="flex items-center gap-3">
+                            <div className="bg-indigo-600 p-2 rounded-lg"><Icon name="Layers" className="text-white" size={24} /></div>
+                            <div>
+                                <h1 className="text-xl font-bold leading-none">{appName}</h1>
+                                <p className="text-xs opacity-50 font-medium">Dashboard</p>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <button onClick={()=>openProfile(true)} className={`px-3 py-2 rounded-lg font-bold text-xs flex items-center gap-2 ${isDark?'bg-slate-800':'bg-slate-100'}`}><Icon name="User" size={16}/> Hồ Sơ</button>
-                                {isAdmin && (<><button onClick={()=>setShowUserManage(true)} className={`p-2 rounded-full ${isDark?'bg-slate-800':'bg-slate-100'}`}><Icon name="UserCog"/></button><button onClick={()=>setShowHistory(true)} className={`p-2 rounded-full ${isDark?'bg-slate-800':'bg-slate-100'}`}><Icon name="History"/></button></>)}
-                                <button onClick={()=>setIsDark(!isDark)} className={`p-2 rounded-full ${isDark?'bg-slate-800':'bg-slate-100'}`}><Icon name={isDark?"Sun":"Moon"}/></button>
-                                <button onClick={handleLogout} className={`p-2 rounded-full ${isDark?'bg-slate-800':'bg-slate-100'}`}><Icon name="LogOut"/></button>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => setShowHistory(true)} className={`p-2 rounded-full transition-colors ${theme.cardHover} border border-transparent`} title="Lịch sử"><Icon name="History" /></button>
+                            <button onClick={() => setIsDark(!isDark)} className={`p-2 rounded-full transition-colors ${theme.cardHover} border border-transparent`}>{isDark ? <Icon name="Sun" /> : <Icon name="Moon" />}</button>
+                            <div className="h-8 w-px bg-slate-500/20 mx-2"></div>
+                            <div onClick={() => { setProfileForm({ username: currentUser.username, password: currentUser.password, name: currentUser.name }); setShowProfile(true); }} className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
+                                <div className="text-right hidden sm:block">
+                                    <p className="text-sm font-bold">{currentUser.name}</p>
+                                    <p className="text-xs opacity-50 uppercase">{currentUser.role}</p>
+                                </div>
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/20">{currentUser.name.charAt(0)}</div>
                             </div>
+                            <button onClick={handleLogout} className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-full" title="Đăng xuất"><Icon name="LogOut" /></button>
                         </div>
                     </header>
 
+                    {/* MAIN CONTENT */}
                     <main className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
-                        {/* VIEWER DASHBOARD */}
+                        
+                        {/* STATS ROW */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className={`p-5 rounded-2xl border flex items-center gap-4 ${theme.card}`}>
+                                <div className="p-3 bg-blue-500/10 text-blue-500 rounded-xl"><Icon name="Briefcase" size={24} /></div>
+                                <div><p className="text-xs uppercase font-bold opacity-60">Tổng Acc</p><p className="text-2xl font-bold">{stats.total}</p></div>
+                            </div>
+                            <div className={`p-5 rounded-2xl border flex items-center gap-4 ${theme.card}`}>
+                                <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl"><Icon name="ShoppingBag" size={24} /></div>
+                                <div><p className="text-xs uppercase font-bold opacity-60">Chưa bán</p><p className="text-2xl font-bold">{stats.unsold}</p></div>
+                            </div>
+                            <div className={`p-5 rounded-2xl border flex items-center gap-4 ${theme.card}`}>
+                                <div className="p-3 bg-green-500/10 text-green-500 rounded-xl"><Icon name="CheckCircle" size={24} /></div>
+                                <div><p className="text-xs uppercase font-bold opacity-60">Đã xong</p><p className="text-2xl font-bold">{stats.completed}</p></div>
+                            </div>
+                            <div className={`p-5 rounded-2xl border flex items-center gap-4 ${theme.card}`}>
+                                <div className="p-3 bg-amber-500/10 text-amber-500 rounded-xl"><Icon name="DollarSign" size={24} /></div>
+                                <div><p className="text-xs uppercase font-bold opacity-60">Doanh thu</p><p className="text-2xl font-bold">{stats.revenue.toLocaleString()}</p></div>
+                            </div>
+                        </div>
+
+                        {/* VIEWER KPI */}
                         {!isAdmin && myStats && (
-                            <div className={`p-6 rounded-2xl border shadow-lg mb-8 ${theme.card}`}>
-                                <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Icon name="Briefcase" className="text-indigo-500"/> Hiệu suất của bạn</h2>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className={`p-4 rounded-xl border ${isDark?'border-slate-700 bg-slate-800':'bg-slate-50'}`}><div className="text-sm opacity-60 font-bold">Hoa hồng</div><div className="text-3xl font-bold text-purple-500">{(myStats.currentRate*100).toFixed(0)}%</div><div className="w-full bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden"><div className="bg-purple-500 h-full" style={{width:`${myStats.progress}%`}}></div></div><div className="text-[10px] text-right mt-1 opacity-60">{myStats.nextTierText}</div></div>
-                                    <div className={`p-4 rounded-xl border ${isDark?'border-slate-700 bg-slate-800':'bg-slate-50'}`}><div className="text-sm opacity-60 font-bold">Đã bán</div><div className="text-3xl font-bold text-blue-500">{myStats.count} Acc</div></div>
-                                    <div className={`p-4 rounded-xl border ${isDark?'border-slate-700 bg-slate-800':'bg-slate-50'}`}><div className="text-sm opacity-60 font-bold">Thu Nhập</div><div className="text-3xl font-bold text-emerald-500">{myStats.totalCommission.toLocaleString()} VNĐ</div></div>
+                            <div className={`p-6 rounded-2xl border relative overflow-hidden ${theme.card}`}>
+                                <div className="absolute top-0 right-0 p-32 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
+                                <div className="flex flex-col md:flex-row justify-between items-center gap-6 relative z-10">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-16 h-16 rounded-full border-4 border-indigo-500 flex items-center justify-center text-xl font-bold bg-indigo-500/10 text-indigo-500">
+                                            {Math.round(myStats.currentRate * 100)}%
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-bold">Cấp độ hoa hồng</h2>
+                                            <p className="text-sm opacity-60">{myStats.nextTierText}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 w-full md:w-auto">
+                                        <div className="flex justify-between text-xs font-bold mb-2 uppercase opacity-70"><span>Tiến độ</span><span>{myStats.count}/22 acc</span></div>
+                                        <div className="w-full h-3 bg-slate-500/20 rounded-full overflow-hidden">
+                                            <div className="h-full bg-indigo-500 transition-all duration-1000 ease-out" style={{ width: `${Math.min(100, myStats.progress)}%` }}></div>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xs uppercase font-bold opacity-60">Thu nhập của bạn</p>
+                                        <p className="text-2xl font-bold text-green-500">+{myStats.totalCommission.toLocaleString()} đ</p>
+                                    </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* ADMIN STATS */}
-                        {isAdmin && (
-                            <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                                <div className={`p-4 rounded-2xl border ${theme.card}`}><div className="text-xs font-bold uppercase opacity-60">Tổng Acc</div><div className="text-2xl font-bold">{stats.total}</div></div>
-                                <div className={`p-4 rounded-2xl border ${theme.card}`}><div className="text-xs font-bold uppercase opacity-60">Chưa bán</div><div className="text-2xl font-bold text-indigo-500">{stats.unsold}</div></div>
-                                <div className={`p-4 rounded-2xl border ${theme.card}`}><div className="text-xs font-bold uppercase opacity-60">Đã bán</div><div className="text-2xl font-bold text-emerald-500">{stats.sold}</div></div>
-                                <div className={`p-4 rounded-2xl border ${theme.card}`}><div className="text-xs font-bold uppercase opacity-60">Hoàn thành</div><div className="text-2xl font-bold text-blue-500">{stats.completed}</div></div>
-                                <div className={`p-4 rounded-2xl border col-span-2 ${theme.card}`}><div className="text-xs font-bold uppercase opacity-60">Doanh thu</div><div className="text-2xl font-bold text-emerald-500">{stats.revenue.toLocaleString()} VNĐ</div></div>
-                            </section>
-                        )}
-
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                             {/* SIDEBAR */}
-                            <div className="lg:col-span-4 space-y-6">
-                                {isAdmin ? (
-                                    <>
-                                        <div className="rounded-2xl p-6 shadow-sm border relative overflow-hidden bg-gradient-to-br from-indigo-900 to-purple-900 text-white border-none">
-                                            <div className="flex justify-between mb-4"><h2 className="font-bold text-lg flex gap-2"><Icon name="Shuffle"/> Bán Random</h2><span className="text-xs bg-purple-500 px-2 py-0.5 rounded-full font-bold">{stats.completed} Ready</span></div>
-                                            <div className="flex items-center gap-2 mb-4"><button onClick={()=>setSellQuantity(Math.max(1,sellQuantity-1))} className="p-2 bg-white/10 rounded"><Icon name="Minus"/></button><input type="number" value={sellQuantity} onChange={e=>setSellQuantity(Math.max(1,parseInt(e.target.value)||0))} className="w-full text-center bg-transparent font-bold text-xl"/><button onClick={()=>setSellQuantity(sellQuantity+1)} className="p-2 bg-white/10 rounded"><Icon name="Plus"/></button></div>
-                                            <button onClick={requestSellRandom} className="w-full py-3 bg-white text-indigo-900 font-bold rounded-xl shadow-lg active:scale-95">Bán Ngay</button>
-                                        </div>
-                                        <div className={`rounded-2xl p-6 border ${theme.card}`}>
-                                            <div className="flex items-center gap-2 mb-4 font-bold text-lg"><Icon name="RefreshCw" className="text-blue-500"/> Auto Hotmail</div>
-                                            <div className={`p-3 rounded border border-dashed mb-3 font-mono text-sm ${isDark?'bg-slate-800':'bg-slate-50'}`}><div>User: {generatedCreds.email||'---'}</div><div>Pass: {generatedCreds.password||'---'}</div></div>
-                                            <div className="flex gap-2"><button onClick={generateHotmail} className="flex-1 py-2 bg-slate-700 text-white rounded font-bold">Random</button><button onClick={fillToForm} className="flex-1 py-2 border rounded font-bold text-indigo-500">Điền Form</button></div>
-                                        </div>
-                                        <div className={`rounded-2xl p-6 border ${theme.card}`}>
-                                            <div className="flex items-center gap-2 mb-4 font-bold text-lg"><Icon name="Plus" className="text-emerald-500"/> Thêm Acc</div>
-                                            <form onSubmit={handleAddAccount} className="space-y-3">
-                                                <div><label className="text-xs font-bold opacity-60">User/Pass</label><input value={formData.username} onChange={e=>setFormData({...formData,username:e.target.value})} placeholder="User" className={`w-full p-2 mb-2 rounded border ${theme.input}`}/><input value={formData.password} onChange={e=>setFormData({...formData,password:e.target.value})} placeholder="Pass" className={`w-full p-2 rounded border ${theme.input}`}/></div>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <input type="number" value={formData.price} onChange={e=>setFormData({...formData,price:e.target.value})} placeholder="Giá" className={`w-full p-2 rounded border ${theme.input}`}/>
-                                                    <input value={formData.note} onChange={e=>setFormData({...formData,note:e.target.value})} placeholder="Ghi chú" className={`w-full p-2 rounded border ${theme.input}`}/>
-                                                </div>
-                                                <button className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg active:scale-95">Thêm</button>
-                                            </form>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className={`h-64 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center opacity-50 ${isDark?'border-slate-800':'border-slate-200'}`}><Icon name="Shield" size={48}/><p className="font-bold mt-2">Chế độ Viewer</p></div>
+                        {/* TOOLBAR */}
+                        <div className={`p-4 rounded-2xl border flex flex-col lg:flex-row gap-4 justify-between items-center sticky top-20 z-30 shadow-sm ${theme.card}`}>
+                            
+                            {/* Actions Left */}
+                            <div className="flex flex-wrap gap-2 w-full lg:w-auto">
+                                {isAdmin && (
+                                    <div className="flex items-center gap-2 bg-slate-500/10 p-1 rounded-xl">
+                                        <button onClick={generateHotmail} className="px-3 py-2 text-sm font-bold flex items-center gap-2 hover:bg-white/10 rounded-lg transition-colors" title="Tạo mail ảo"><Icon name="Shuffle" size={16} /> Auto Mail</button>
+                                        <button onClick={fillToForm} className="px-3 py-2 text-sm font-bold flex items-center gap-2 hover:bg-white/10 rounded-lg transition-colors" title="Điền vào form"><Icon name="ArrowRight" size={16} /></button>
+                                    </div>
                                 )}
+                                <div className={`flex items-center px-3 py-2 rounded-xl border-2 flex-1 lg:flex-none ${theme.input.replace('bg-', '')} ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+                                    <Icon name="Search" size={18} className="mr-2 opacity-50"/>
+                                    <input type="text" placeholder="Tìm kiếm..." className="bg-transparent outline-none w-full text-sm font-medium" />
+                                </div>
                             </div>
 
-                            {/* MAIN LIST */}
-                            <div className={`lg:col-span-8 flex flex-col h-[800px] rounded-2xl border shadow-lg overflow-hidden ${theme.card}`}>
-                                {isAdmin ? (
-                                    <>
-                                        <div className={`p-4 border-b flex justify-between items-center ${isDark?'border-slate-800':'border-slate-100'}`}>
-                                            <h2 className="font-bold text-lg">Danh Sách ({filteredAccounts.length})</h2>
-                                            <div className="flex gap-1 overflow-x-auto">{['all','pending','farming','completed','sold'].map(f=><button key={f} onClick={()=>setFilter(f)} className={`px-3 py-1 rounded text-xs font-bold capitalize ${filter===f?'bg-indigo-600 text-white':'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>{f}</button>)}</div>
-                                        </div>
-                                        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                                            {filteredAccounts.map((acc) => {
-                                                const status = getAccStatus(acc);
-                                                const isSold = status === 'sold';
-                                                let days = acc.daysFarmed;
-                                                if(acc.mode==='auto' && acc.farmingStartedAt) days = Math.floor((now - acc.farmingStartedAt)/86400000);
-                                                if(days>23) days=23;
-                                                const progress = (days/23)*100;
-                                                
-                                                return (
-                                                    <div key={acc.id} className={`p-4 rounded-xl border flex flex-col md:flex-row gap-4 hover:shadow-md transition-all ${isSold?'opacity-60 grayscale':''} ${isDark?'border-slate-800 bg-slate-800/50':'border-slate-100 bg-white'}`}>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2 mb-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${status==='sold'?'border-slate-500 text-slate-500':status==='completed'?'border-blue-500 text-blue-500':'border-amber-500 text-amber-500'}`}>{status}</span><span className="text-xs opacity-50">#{acc.id.slice(-4)}</span></div>
-                                                            <div className="font-mono font-bold truncate cursor-pointer hover:text-indigo-500" onClick={()=>copyToClipboard(acc.username,'User')}>{acc.username}</div>
-                                                            <div className="font-mono text-xs opacity-60 truncate cursor-pointer hover:text-indigo-500" onClick={()=>copyToClipboard(acc.password,'Pass')}>{acc.password}</div>
-                                                        </div>
-                                                        <div className="flex flex-col items-end gap-2">
-                                                            <div className="font-bold text-emerald-500 text-lg">{acc.price.toLocaleString()}đ</div>
-                                                            {!isSold && (
-                                                                <div className="w-32">
-                                                                    <div className="flex justify-between text-[10px] font-bold opacity-60 mb-1">
-                                                                        {acc.mode==='manual'?<div className="flex gap-1"><button onClick={()=>updateAccountDaysManual(acc.id,days-1)}>-</button>{days}<button onClick={()=>updateAccountDaysManual(acc.id,days+1)}>+</button></div>:<span className="flex items-center gap-1 text-blue-500"><Icon name="Zap" size={10}/> Auto</span>}
-                                                                        <span>{Math.round(progress)}%</span>
-                                                                    </div>
-                                                                    <div className="h-1.5 bg-slate-200 rounded-full dark:bg-slate-700 overflow-hidden"><div className={`h-full ${status==='completed'?'bg-blue-500':'bg-amber-500'}`} style={{width:`${progress}%`}}></div></div>
-                                                                </div>
-                                                            )}
-                                                            <div className="flex gap-2 mt-2">
-                                                                {!isSold && (<button onClick={()=>toggleAccountMode(acc.id)} className="p-1.5 rounded border text-[10px] font-bold opacity-60 hover:opacity-100">{acc.mode==='auto'?'MAN':'AUTO'}</button>)}
-                                                                {!isSold && (<button onClick={()=>requestSellSingle(acc.id)} className="p-1.5 rounded bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition"><Icon name="DollarSign" size={16}/></button>)}
-                                                                <button onClick={()=>requestDelete(acc.id)} className="p-1.5 rounded bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition"><Icon name="Trash2" size={16}/></button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="h-full flex flex-col items-center justify-center opacity-50"><Icon name="Lock" size={64}/><p>Danh sách ẩn với Viewer</p></div>
-                                )}
+                            {/* Actions Right */}
+                            <div className="flex flex-wrap gap-2 w-full lg:w-auto justify-end">
+                                <div className="flex bg-slate-500/10 p-1 rounded-xl">
+                                    {['all', 'pending', 'farming', 'completed', 'sold'].map(f => (
+                                        <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-lg text-sm font-bold capitalize transition-all ${filter === f ? 'bg-white text-indigo-600 shadow-sm' : 'hover:bg-white/5 opacity-60 hover:opacity-100'}`}>
+                                            {f}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex items-center gap-2 bg-slate-500/10 p-1 rounded-xl">
+                                    <button onClick={() => setSellQuantity(q => Math.max(1, q - 1))} className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-lg"><Icon name="Minus" size={14}/></button>
+                                    <span className="w-8 text-center font-bold text-sm">{sellQuantity}</span>
+                                    <button onClick={() => setSellQuantity(q => q + 1)} className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-lg"><Icon name="Plus" size={14}/></button>
+                                    <button onClick={requestSellRandom} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 ml-1">Bán Random</button>
+                                </div>
                             </div>
                         </div>
+
+                        {/* ADD FORM (ADMIN ONLY) */}
+                        {isAdmin && (
+                            <div className={`p-6 rounded-2xl border ${theme.card}`}>
+                                <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Icon name="Plus" className="text-indigo-500"/> Thêm tài khoản mới</h3>
+                                <form onSubmit={handleAddAccount} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                                    <div className="md:col-span-3">
+                                        <input type="text" placeholder="Username / Email" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none border-2 focus:border-indigo-500 transition-colors ${theme.input}`} />
+                                    </div>
+                                    <div className="md:col-span-3">
+                                        <input type="text" placeholder="Password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none border-2 focus:border-indigo-500 transition-colors ${theme.input}`} />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <input type="number" placeholder="Giá (VNĐ)" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none border-2 focus:border-indigo-500 transition-colors ${theme.input}`} />
+                                    </div>
+                                    <div className="md:col-span-3">
+                                        <input type="text" placeholder="Ghi chú (Tên game, skin...)" value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} className={`w-full px-4 py-3 rounded-xl outline-none border-2 focus:border-indigo-500 transition-colors ${theme.input}`} />
+                                    </div>
+                                    <div className="md:col-span-1">
+                                        <button type="submit" className="w-full h-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 transition-transform active:scale-95"><Icon name="Plus" size={24} /></button>
+                                    </div>
+                                    
+                                    {/* Generated Info Preview */}
+                                    {generatedCreds.email && (
+                                        <div className="md:col-span-12 flex items-center gap-4 text-xs font-mono opacity-60 bg-slate-500/5 p-2 rounded-lg">
+                                            <span>Gen: {generatedCreds.email}</span>
+                                            <span>|</span>
+                                            <span>Pass: {generatedCreds.password}</span>
+                                        </div>
+                                    )}
+                                </form>
+                            </div>
+                        )}
+
+                        {/* ACCOUNT LIST */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {filteredAccounts.map(acc => {
+                                let displayDays = acc.daysFarmed || 0;
+                                if (acc.mode === 'auto' && acc.farmingStartedAt) {
+                                    const diff = now - acc.farmingStartedAt;
+                                    displayDays = Math.floor(diff / (1000 * 60 * 60 * 24));
+                                }
+                                
+                                const isCompleted = displayDays >= 50; // EDITED: 23 -> 50
+                                const isSold = acc.status === 'sold';
+
+                                return (
+                                    <div key={acc.id} className={`group relative p-5 rounded-2xl border transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${isSold ? 'opacity-60 grayscale-[0.5]' : ''} ${theme.card} ${theme.cardHover}`}>
+                                        
+                                        {/* Status Badge */}
+                                        <div className="absolute top-4 right-4 flex items-center gap-2">
+                                            {isSold && <span className="px-2 py-1 rounded-md bg-slate-500 text-white text-xs font-bold uppercase">Đã bán</span>}
+                                            {!isSold && isCompleted && <span className="px-2 py-1 rounded-md bg-green-500 text-white text-xs font-bold uppercase flex items-center gap-1"><Icon name="Check" size={12}/> Xong</span>}
+                                            {!isSold && !isCompleted && acc.mode === 'auto' && <span className="px-2 py-1 rounded-md bg-blue-500 text-white text-xs font-bold uppercase flex items-center gap-1"><Icon name="RefreshCw" size={12} className="animate-spin"/> Auto</span>}
+                                        </div>
+
+                                        {/* Main Info */}
+                                        <div className="mb-4 pr-16">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <h4 className="font-bold text-lg truncate font-mono">{acc.username}</h4>
+                                                <button onClick={() => copyToClipboard(acc.username, 'Username')} className="opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity"><Icon name="Copy" size={14}/></button>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-sm opacity-60">
+                                                <span className="font-mono">********</span>
+                                                <button onClick={() => copyToClipboard(acc.password, 'Password')} className="opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity"><Icon name="Copy" size={14}/></button>
+                                            </div>
+                                        </div>
+
+                                        {/* Progress Bar */}
+                                        {!isSold && (
+                                            <div className="mb-4">
+                                                <div className="flex justify-between text-xs font-bold mb-1.5 uppercase opacity-70">
+                                                    <span>Tiến độ Farm</span>
+                                                    <span className={isCompleted ? 'text-green-500' : ''}>{Math.min(50, displayDays)}/50 ngày</span>
+                                                </div>
+                                                <div className="w-full h-2 bg-slate-500/10 rounded-full overflow-hidden relative">
+                                                    <div className={`absolute left-0 top-0 h-full rounded-full transition-all duration-500 ${isCompleted ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min(100, (displayDays/50)*100)}%` }}></div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Footer Actions */}
+                                        <div className="flex items-center justify-between pt-4 border-t border-slate-500/10 mt-2">
+                                            <div className="font-bold text-indigo-500">{acc.price.toLocaleString()} đ</div>
+                                            
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0 duration-300">
+                                                {!isSold && isAdmin && (
+                                                    <>
+                                                        <button onClick={() => toggleAccountMode(acc.id)} className={`p-2 rounded-lg hover:bg-slate-500/10 ${acc.mode === 'auto' ? 'text-blue-500' : 'text-slate-500'}`} title="Bật/Tắt Auto Farm">
+                                                            <Icon name="Zap" size={18} fill={acc.mode==='auto'?'currentColor':'none'} />
+                                                        </button>
+                                                        <button onClick={() => updateAccountDaysManual(acc.id, displayDays + 1)} className="p-2 rounded-lg hover:bg-slate-500/10 text-slate-500" title="+1 ngày">
+                                                            <Icon name="Plus" size={18} />
+                                                        </button>
+                                                        <button onClick={() => requestDelete(acc.id)} className="p-2 rounded-lg hover:bg-rose-500/10 text-rose-500" title="Xóa">
+                                                            <Icon name="Trash2" size={18} />
+                                                        </button>
+                                                    </>
+                                                )}
+                                                {!isSold && (
+                                                    <button onClick={() => requestSellSingle(acc.id)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/30 ml-1">Bán</button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {filteredAccounts.length === 0 && (
+                            <div className="text-center py-20 opacity-50 flex flex-col items-center">
+                                <Icon name="Search" size={48} className="mb-4 opacity-20" />
+                                <p>Không tìm thấy tài khoản nào.</p>
+                            </div>
+                        )}
                     </main>
                 </div>
             );
@@ -810,4 +930,3 @@
     </script>
 </body>
 </html>
-
