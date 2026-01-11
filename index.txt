@@ -445,7 +445,7 @@
                     const histRef = window.fs.doc(DataService.colHistory());
                     batch.set(histRef, {
                         ...acc,
-                        daysFarmed: Math.min(23, finalDays),
+                        daysFarmed: Math.min(50, finalDays),
                         soldAt: Date.now(),
                         soldMethod: 'random_batch',
                         soldBy: finalSellerId,
@@ -488,9 +488,9 @@
 
             const updateAccountDaysManual = async (id, newDays) => {
                 const acc = accounts.find(a => a.id === id);
-                const validDays = Math.max(0, Math.min(23, newDays));
+                const validDays = Math.max(0, Math.min(50, newDays));
                 let newStatus = acc.status;
-                if (validDays >= 23) newStatus = 'completed';
+                if (validDays >= 50) newStatus = 'completed';
                 else if (validDays > 0 && acc.status === 'pending') newStatus = 'farming';
                 else if (validDays > 0 && acc.status === 'completed') newStatus = 'farming';
                 else if (validDays === 0) newStatus = 'pending';
